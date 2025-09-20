@@ -9,13 +9,15 @@
 
 using namespace std;
 
+const double PI = 3.14159265358979323846;
+
 // 定义点的结构
 struct Point {
     double x;
     double y;
-    
+
     Point(double x = 0, double y = 0) : x(x), y(y) {}
-    
+
     // 重载相等运算符，考虑浮点数精度
     bool operator==(const Point& other) const {
         return abs(x - other.x) < 1e-10 && abs(y - other.y) < 1e-10;
@@ -26,37 +28,41 @@ struct Point {
 struct Circle {
     Point center;
     double radius;
-    
+
     Circle(double x = 0, double y = 0, double r = 0) : center(x, y), radius(r) {}
 };
 
-// 从Minecraft命令字符串提取坐标
-bool extractCoordinatesFromCommand(const string& command, double& x, double& y) {
+// 从F3+C命令字符串提取坐标和角度
+bool extractCoordinatesAndAngleFromCommand(const string& command, double& x, double& y, double& angle) {
     istringstream iss(command);
     string token;
     vector<string> tokens;
-    
+
     // 分割字符串为token
     while (iss >> token) {
         tokens.push_back(token);
     }
-    
+
     // 检查是否具有足够的token
     if (tokens.size() < 11) {
-        cout << "命令格式错误，无法提取坐标" << endl;
+        cout << "命令格式错误，无法提取坐标和角度" << endl;
         return false;
     }
-    
+
     try {
         // 提取x坐标（第7个token，索引6）
         x = stod(tokens[6]);
-        
+
         // 提取y坐标（第9个token，索引8）
         y = stod(tokens[8]);
-        
+
+        // 提取角度（第10个token，索引9）
+        angle = stod(tokens[9]);
+
         return true;
-    } catch (const exception& e) {
-        cout << "提取坐标时出错: " << e.what() << endl;
+    }
+    catch (const exception& e) {
+        cout << "提取坐标或角度时出错: " << e.what() << endl;
         return false;
     }
 }
@@ -64,39 +70,101 @@ bool extractCoordinatesFromCommand(const string& command, double& x, double& y) 
 // 检查字符串是否为数字
 bool isNumber(const string& s) {
     if (s.empty()) return false;
-    
+
     // 检查是否包含非数字字符（除了小数点、负号和数字）
     return all_of(s.begin(), s.end(), [](char c) {
         return isdigit(c) || c == '.' || c == '-';
-    });
+        });
 }
 
 // 从字符串解析坐标
-bool parseCoordinates(const string& input, double& x, double& y) {
-    // 检查是否为Minecraft命令格式
+bool parseCoordinates(const string& input, double& x, double& y, double& angle, bool& isCommand) {
+    // 检查是否为F3+C命令格式
     if (input.find("/execute") == 0) {
-        return extractCoordinatesFromCommand(input, x, y);
+        isCommand = true;
+        return extractCoordinatesAndAngleFromCommand(input, x, y, angle);
     }
-    
-    // 尝试解析为两个数字
+
+    // 不是命令格式，尝试解析为两个数字
+    isCommand = false;
+    angle = 0.0; // 非命令格式没有角度信息
+
     istringstream iss(input);
     string token1, token2;
-    
+
     if (iss >> token1 >> token2) {
         if (isNumber(token1) && isNumber(token2)) {
             try {
                 x = stod(token1);
                 y = stod(token2);
                 return true;
-            } catch (const exception& e) {
+            }
+            catch (const exception& e) {
                 cout << "解析坐标时出错: " << e.what() << endl;
                 return false;
             }
         }
     }
-    
-    cout << "输入格式错误，请输入Minecraft命令或x y坐标" << endl;
+
+    cout << "输入格式错误，请输入F3+C命令或x y坐标" << endl;
     return false;
+}
+
+// 规范化角度到[-180, 180]范围
+double normalizeAngle(double angle) {
+    // 先转换为度
+    angle = fmod(angle, 360.0);
+    if (angle > 180.0) {
+        angle -= 360.0;
+    }
+    else if (angle < -180.0) {
+        angle += 360.0;
+    }
+    return angle;
+}
+
+// 计算从圆心到目标点的向量与Y轴正方向的夹角（顺时针为负，逆时针为正）
+double calculateAngle(const Point& from, const Point& to) {
+    double dx = to.x - from.x;
+    double dy = to.y - from.y;
+
+    // 计算与X轴正方向的夹角（标准数学坐标系）
+    double angle_rad = atan2(dy, dx);
+
+    // 转换为度
+    double angle_deg = angle_rad * 180.0 / PI;
+
+    // 转换为与Y轴正方向的夹角（顺时针为负，逆时针为正）
+    // 标准数学坐标系中，Y轴正方向对应90°，我们需要将其转换为0°
+    // 同时，顺时针旋转为负，逆时针旋转为正
+    angle_deg = 90.0 - angle_deg;
+
+    // 确保顺时针为负，逆时针为正
+    angle_deg = -angle_deg;
+
+    return normalizeAngle(angle_deg);
+}
+
+// 计算两个角度之间的最小差值
+double angleDifference(double a, double b) {
+    double diff = fabs(a - b);
+    return min(diff, 360.0 - diff);
+}
+
+// 根据角度获取方向描述
+string getDirection(double angle) {
+    // 将角度规范化为[0, 360)范围
+    double normalized = fmod(angle + 360.0, 360.0);
+
+    // 定义方向
+    if (normalized >= 337.5 || normalized < 22.5) return "南";
+    else if (normalized >= 22.5 && normalized < 67.5) return "西南";
+    else if (normalized >= 67.5 && normalized < 112.5) return "西";
+    else if (normalized >= 112.5 && normalized < 157.5) return "西北";
+    else if (normalized >= 157.5 && normalized < 202.5) return "北";
+    else if (normalized >= 202.5 && normalized < 247.5) return "东北";
+    else if (normalized >= 247.5 && normalized < 292.5) return "东";
+    else return "东南";
 }
 
 // 计算两点之间的距离
@@ -107,50 +175,51 @@ double distance(const Point& p1, const Point& p2) {
 // 计算两圆的交点
 vector<Point> findCircleIntersections(const Circle& c1, const Circle& c2) {
     vector<Point> intersections;
-    
+
     // 计算两圆心之间的距离
     double d = distance(c1.center, c2.center);
-    
+
     // 检查两圆是否重合
     if (d < 1e-10 && abs(c1.radius - c2.radius) < 1e-10) {
         cout << "两圆重合，有无限多个交点" << endl;
         return intersections; // 返回空向量表示无限多个交点
     }
-    
+
     // 检查是否没有交点
     if (d > c1.radius + c2.radius || d < abs(c1.radius - c2.radius)) {
         cout << "两圆没有交点" << endl;
         return intersections;
     }
-    
+
     // 计算交点
     double a = (pow(c1.radius, 2) - pow(c2.radius, 2) + pow(d, 2)) / (2 * d);
     double h = sqrt(pow(c1.radius, 2) - pow(a, 2));
-    
+
     // 计算中点坐标
     Point p0(
         c1.center.x + a * (c2.center.x - c1.center.x) / d,
         c1.center.y + a * (c2.center.y - c1.center.y) / d
     );
-    
+
     // 计算交点坐标
     if (h < 1e-10) { // 相切，只有一个交点
         intersections.push_back(p0);
         cout << "两圆相切，有一个交点" << endl;
-    } else { // 有两个交点
+    }
+    else { // 有两个交点
         intersections.push_back(Point(
             p0.x + h * (c2.center.y - c1.center.y) / d,
             p0.y - h * (c2.center.x - c1.center.x) / d
         ));
-        
+
         intersections.push_back(Point(
             p0.x - h * (c2.center.y - c1.center.y) / d,
             p0.y + h * (c2.center.x - c1.center.x) / d
         ));
-        
+
         cout << "两圆相交，有两个交点" << endl;
     }
-    
+
     return intersections;
 }
 
@@ -160,19 +229,49 @@ int roundToInteger(double value) {
 }
 
 // 打印交点坐标（保留到个位数）
-void printIntersections(const vector<Point>& intersections) {
+void printIntersections(const vector<Point>& intersections, const Point& center, double inputAngle = 0.0, bool hasAngle = false) {
     if (intersections.empty()) {
         return;
     }
-    
-    cout << "交点坐标（保留到个位数）：" << endl;
+
+    // 计算推荐的交点（如果有角度信息）
+    int recommendedIndex = -1;
+    if (hasAngle && intersections.size() == 2) {
+        double angle1 = calculateAngle(center, intersections[0]);
+        double angle2 = calculateAngle(center, intersections[1]);
+
+        double diff1 = angleDifference(inputAngle, angle1);
+        double diff2 = angleDifference(inputAngle, angle2);
+
+        if (diff1 < diff2) {
+            recommendedIndex = 0;
+        }
+        else if (diff2 < diff1) {
+            recommendedIndex = 1;
+        }
+    }
+
+    // 打印交点信息
     for (size_t i = 0; i < intersections.size(); ++i) {
         int x_rounded = roundToInteger(intersections[i].x);
         int y_rounded = roundToInteger(intersections[i].y);
-        
-        cout << "交点 " << i + 1 << ": (" 
-                  << x_rounded << ", " 
-                  << y_rounded << ")" << endl;
+
+        cout << "交点 " << i + 1 << ": ("
+            << x_rounded << ", "
+            << y_rounded << ")";
+
+        // 计算并显示每个交点的角度和方向
+        double angle = calculateAngle(center, intersections[i]);
+        string direction = getDirection(angle);
+
+        cout << " 角度: " << fixed << setprecision(2) << angle << "° (" << direction << ")";
+
+        // 如果是推荐的交点，添加推荐标记
+        if (i == recommendedIndex) {
+            cout << " [推荐]";
+        }
+
+        cout << endl;
     }
 }
 
@@ -184,69 +283,95 @@ void clearInputBuffer() {
 
 int main() {
     while (true) {
-        string input1, input2;
+        string input1, input2, r2_input_str;
         double x1, y1, r1_input, x2, y2, r2_input;
-        
-        cout << "请输入第一个圆的圆心坐标 (可以是Minecraft命令或x y坐标): ";
+        double angle1 = 0.0, angle2 = 0.0;
+        bool isCommand1 = false, isCommand2 = false;
+
+        cout << "请输入第一个圆的圆心坐标 (F3+C或x y坐标): ";
         getline(cin, input1);
-        
-        if (!parseCoordinates(input1, x1, y1)) {
+
+        if (!parseCoordinates(input1, x1, y1, angle1, isCommand1)) {
             cout << "请重新输入" << endl;
             continue;
         }
-        
-        cout << "提取的坐标: x = " << x1 << ", y = " << y1 << endl;
-        
+
+        cout << "提取的坐标: x = " << x1 << ", y = " << y1;
+        if (isCommand1) {
+            cout << ", 角度: " << angle1 << "° (已规范化: " << normalizeAngle(angle1) << "°)";
+        }
+        cout << endl;
+
         cout << "请输入第一个圆的半径 (r1): ";
         cin >> r1_input;
-        
+
         // 检查输入是否有效
         if (cin.fail()) {
             cout << "输入无效，请重新输入数值。" << endl;
             clearInputBuffer();
             continue;
         }
-        
+
         clearInputBuffer(); // 清除输入缓冲区
-        
-        cout << "请输入第二个圆的圆心坐标 (可以是Minecraft命令或x y坐标): ";
+
+        cout << "请输入第二个圆的圆心坐标 (F3+C或x y坐标): ";
         getline(cin, input2);
-        
-        if (!parseCoordinates(input2, x2, y2)) {
+
+        if (!parseCoordinates(input2, x2, y2, angle2, isCommand2)) {
             cout << "请重新输入" << endl;
             continue;
         }
-        
-        cout << "提取的坐标: x = " << x2 << ", y = " << y2 << endl;
-        
-        cout << "请输入第二个圆的半径 (r2): ";
-        cin >> r2_input;
-        
-        // 检查输入是否有效
-        if (cin.fail()) {
-            cout << "输入无效，请重新输入数值。" << endl;
-            clearInputBuffer();
-            continue;
+
+        cout << "提取的坐标: x = " << x2 << ", y = " << y2;
+        if (isCommand2) {
+            angle2 = normalizeAngle(angle2);
+            cout << ", 角度: " << angle2 << "°";
         }
-        
-        clearInputBuffer(); // 清除输入缓冲区
-        
+        cout << endl;
+
+        cout << "请输入第二个圆的半径 (r2): ";
+        getline(cin, r2_input_str);
+
+        // 检查输入是否为空
+        if (r2_input_str.empty()) {
+            // 使用默认值：第一个圆的半径减1
+            r2_input = r1_input - 1.0;
+            cout << "使用默认半径值: r2 = r1 - 1 = " << r2_input << endl;
+        }
+        else {
+            // 尝试将输入转换为数字
+            try {
+                r2_input = stod(r2_input_str);
+            }
+            catch (const exception& e) {
+                cout << "输入无效，请重新输入数值。" << endl;
+                continue;
+            }
+        }
+
         // 将输入的半径乘以16
         double r1 = r1_input * 16.0;
         double r2 = r2_input * 16.0;
-        
+
         cout << "使用的半径值: r1 = " << r1 << ", r2 = " << r2 << endl;
-        
+
         Circle c1(x1, y1, r1);
         Circle c2(x2, y2, r2);
-        
+
         vector<Point> intersections = findCircleIntersections(c1, c2);
-        printIntersections(intersections);
-        
+
+        // 打印交点信息
+        if (isCommand2) {
+            printIntersections(intersections, c2.center, angle2, true);
+        }
+        else {
+            printIntersections(intersections, c2.center);
+        }
+
         cout << "----------------------------------------" << endl;
-        cout << "准备进行下一次计算..." << endl;
+        cout << "准备进行下一次计算...（Bilibili:InFect狄鹿）" << endl;
         cout << "----------------------------------------" << endl;
     }
-    
+
     return 0;
 }
