@@ -1,0 +1,252 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <iomanip>
+#include <string>
+#include <sstream>
+#include <limits>
+#include <algorithm>
+
+using namespace std;
+
+// 定义点的结构
+struct Point {
+    double x;
+    double y;
+    
+    Point(double x = 0, double y = 0) : x(x), y(y) {}
+    
+    // 重载相等运算符，考虑浮点数精度
+    bool operator==(const Point& other) const {
+        return abs(x - other.x) < 1e-10 && abs(y - other.y) < 1e-10;
+    }
+};
+
+// 定义圆的结构
+struct Circle {
+    Point center;
+    double radius;
+    
+    Circle(double x = 0, double y = 0, double r = 0) : center(x, y), radius(r) {}
+};
+
+// 从Minecraft命令字符串提取坐标
+bool extractCoordinatesFromCommand(const string& command, double& x, double& y) {
+    istringstream iss(command);
+    string token;
+    vector<string> tokens;
+    
+    // 分割字符串为token
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+    
+    // 检查是否具有足够的token
+    if (tokens.size() < 11) {
+        cout << "命令格式错误，无法提取坐标" << endl;
+        return false;
+    }
+    
+    try {
+        // 提取x坐标（第7个token，索引6）
+        x = stod(tokens[6]);
+        
+        // 提取y坐标（第9个token，索引8）
+        y = stod(tokens[8]);
+        
+        return true;
+    } catch (const exception& e) {
+        cout << "提取坐标时出错: " << e.what() << endl;
+        return false;
+    }
+}
+
+// 检查字符串是否为数字
+bool isNumber(const string& s) {
+    if (s.empty()) return false;
+    
+    // 检查是否包含非数字字符（除了小数点、负号和数字）
+    return all_of(s.begin(), s.end(), [](char c) {
+        return isdigit(c) || c == '.' || c == '-';
+    });
+}
+
+// 从字符串解析坐标
+bool parseCoordinates(const string& input, double& x, double& y) {
+    // 检查是否为Minecraft命令格式
+    if (input.find("/execute") == 0) {
+        return extractCoordinatesFromCommand(input, x, y);
+    }
+    
+    // 尝试解析为两个数字
+    istringstream iss(input);
+    string token1, token2;
+    
+    if (iss >> token1 >> token2) {
+        if (isNumber(token1) && isNumber(token2)) {
+            try {
+                x = stod(token1);
+                y = stod(token2);
+                return true;
+            } catch (const exception& e) {
+                cout << "解析坐标时出错: " << e.what() << endl;
+                return false;
+            }
+        }
+    }
+    
+    cout << "输入格式错误，请输入Minecraft命令或x y坐标" << endl;
+    return false;
+}
+
+// 计算两点之间的距离
+double distance(const Point& p1, const Point& p2) {
+    return sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
+}
+
+// 计算两圆的交点
+vector<Point> findCircleIntersections(const Circle& c1, const Circle& c2) {
+    vector<Point> intersections;
+    
+    // 计算两圆心之间的距离
+    double d = distance(c1.center, c2.center);
+    
+    // 检查两圆是否重合
+    if (d < 1e-10 && abs(c1.radius - c2.radius) < 1e-10) {
+        cout << "两圆重合，有无限多个交点" << endl;
+        return intersections; // 返回空向量表示无限多个交点
+    }
+    
+    // 检查是否没有交点
+    if (d > c1.radius + c2.radius || d < abs(c1.radius - c2.radius)) {
+        cout << "两圆没有交点" << endl;
+        return intersections;
+    }
+    
+    // 计算交点
+    double a = (pow(c1.radius, 2) - pow(c2.radius, 2) + pow(d, 2)) / (2 * d);
+    double h = sqrt(pow(c1.radius, 2) - pow(a, 2));
+    
+    // 计算中点坐标
+    Point p0(
+        c1.center.x + a * (c2.center.x - c1.center.x) / d,
+        c1.center.y + a * (c2.center.y - c1.center.y) / d
+    );
+    
+    // 计算交点坐标
+    if (h < 1e-10) { // 相切，只有一个交点
+        intersections.push_back(p0);
+        cout << "两圆相切，有一个交点" << endl;
+    } else { // 有两个交点
+        intersections.push_back(Point(
+            p0.x + h * (c2.center.y - c1.center.y) / d,
+            p0.y - h * (c2.center.x - c1.center.x) / d
+        ));
+        
+        intersections.push_back(Point(
+            p0.x - h * (c2.center.y - c1.center.y) / d,
+            p0.y + h * (c2.center.x - c1.center.x) / d
+        ));
+        
+        cout << "两圆相交，有两个交点" << endl;
+    }
+    
+    return intersections;
+}
+
+// 四舍五入到个位数
+int roundToInteger(double value) {
+    return static_cast<int>(round(value));
+}
+
+// 打印交点坐标（保留到个位数）
+void printIntersections(const vector<Point>& intersections) {
+    if (intersections.empty()) {
+        return;
+    }
+    
+    cout << "交点坐标（保留到个位数）：" << endl;
+    for (size_t i = 0; i < intersections.size(); ++i) {
+        int x_rounded = roundToInteger(intersections[i].x);
+        int y_rounded = roundToInteger(intersections[i].y);
+        
+        cout << "交点 " << i + 1 << ": (" 
+                  << x_rounded << ", " 
+                  << y_rounded << ")" << endl;
+    }
+}
+
+// 清空输入缓冲区
+void clearInputBuffer() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+int main() {
+    while (true) {
+        string input1, input2;
+        double x1, y1, r1_input, x2, y2, r2_input;
+        
+        cout << "请输入第一个圆的圆心坐标 (可以是Minecraft命令或x y坐标): ";
+        getline(cin, input1);
+        
+        if (!parseCoordinates(input1, x1, y1)) {
+            cout << "请重新输入" << endl;
+            continue;
+        }
+        
+        cout << "提取的坐标: x = " << x1 << ", y = " << y1 << endl;
+        
+        cout << "请输入第一个圆的半径 (r1): ";
+        cin >> r1_input;
+        
+        // 检查输入是否有效
+        if (cin.fail()) {
+            cout << "输入无效，请重新输入数值。" << endl;
+            clearInputBuffer();
+            continue;
+        }
+        
+        clearInputBuffer(); // 清除输入缓冲区
+        
+        cout << "请输入第二个圆的圆心坐标 (可以是Minecraft命令或x y坐标): ";
+        getline(cin, input2);
+        
+        if (!parseCoordinates(input2, x2, y2)) {
+            cout << "请重新输入" << endl;
+            continue;
+        }
+        
+        cout << "提取的坐标: x = " << x2 << ", y = " << y2 << endl;
+        
+        cout << "请输入第二个圆的半径 (r2): ";
+        cin >> r2_input;
+        
+        // 检查输入是否有效
+        if (cin.fail()) {
+            cout << "输入无效，请重新输入数值。" << endl;
+            clearInputBuffer();
+            continue;
+        }
+        
+        clearInputBuffer(); // 清除输入缓冲区
+        
+        // 将输入的半径乘以16
+        double r1 = r1_input * 16.0;
+        double r2 = r2_input * 16.0;
+        
+        cout << "使用的半径值: r1 = " << r1 << ", r2 = " << r2 << endl;
+        
+        Circle c1(x1, y1, r1);
+        Circle c2(x2, y2, r2);
+        
+        vector<Point> intersections = findCircleIntersections(c1, c2);
+        printIntersections(intersections);
+        
+        cout << "----------------------------------------" << endl;
+        cout << "准备进行下一次计算..." << endl;
+        cout << "----------------------------------------" << endl;
+    }
+    
+    return 0;
+}
