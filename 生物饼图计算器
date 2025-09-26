@@ -6,6 +6,11 @@
 #include <sstream>
 #include <limits>
 #include <algorithm>
+#include <fstream>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using namespace std;
 
@@ -32,8 +37,37 @@ struct Circle {
     Circle(double x = 0, double y = 0, double r = 0) : center(x, y), radius(r) {}
 };
 
-// 从F3+C命令字符串提取坐标和角度
-bool extractCoordinatesAndAngleFromCommand(const string& command, double& x, double& y, double& angle) {
+// 从剪贴板获取文本（仅Windows）
+string getClipboardText() {
+#ifdef _WIN32
+    if (!OpenClipboard(nullptr)) {
+        return "";
+    }
+
+    HANDLE hData = GetClipboardData(CF_TEXT);
+    if (hData == nullptr) {
+        CloseClipboard();
+        return "";
+    }
+
+    char* pszText = static_cast<char*>(GlobalLock(hData));
+    if (pszText == nullptr) {
+        CloseClipboard();
+        return "";
+    }
+
+    string text(pszText);
+    GlobalUnlock(hData);
+    CloseClipboard();
+
+    return text;
+#else
+    return "";
+#endif
+}
+
+// 从F3+C命令字符串提取坐标（不提取角度）
+bool extractCoordinatesFromCommand(const string& command, double& x, double& y) {
     istringstream iss(command);
     string token;
     vector<string> tokens;
@@ -45,7 +79,7 @@ bool extractCoordinatesAndAngleFromCommand(const string& command, double& x, dou
 
     // 检查是否具有足够的token
     if (tokens.size() < 11) {
-        cout << "命令格式错误，无法提取坐标和角度" << endl;
+        cout << "命令格式错误，无法提取坐标" << endl;
         return false;
     }
 
@@ -56,13 +90,10 @@ bool extractCoordinatesAndAngleFromCommand(const string& command, double& x, dou
         // 提取y坐标（第9个token，索引8）
         y = stod(tokens[8]);
 
-        // 提取角度（第10个token，索引9）
-        angle = stod(tokens[9]);
-
         return true;
     }
     catch (const exception& e) {
-        cout << "提取坐标或角度时出错: " << e.what() << endl;
+        cout << "提取坐标时出错: " << e.what() << endl;
         return false;
     }
 }
@@ -77,12 +108,41 @@ bool isNumber(const string& s) {
         });
 }
 
-// 从字符串解析坐标
-bool parseCoordinates(const string& input, double& x, double& y, double& angle, bool& isCommand) {
+// 从字符串解析坐标（第一个圆不提取角度）
+bool parseCoordinates(const string& input, double& x, double& y, double& angle, bool& isCommand, bool isFirstCircle = false) {
     // 检查是否为F3+C命令格式
     if (input.find("/execute") == 0) {
         isCommand = true;
-        return extractCoordinatesAndAngleFromCommand(input, x, y, angle);
+        if (isFirstCircle) {
+            // 第一个圆不提取角度
+            return extractCoordinatesFromCommand(input, x, y);
+        }
+        else {
+            // 第二个圆提取角度
+            istringstream iss(input);
+            string token;
+            vector<string> tokens;
+
+            while (iss >> token) {
+                tokens.push_back(token);
+            }
+
+            if (tokens.size() < 11) {
+                cout << "命令格式错误，无法提取坐标和角度" << endl;
+                return false;
+            }
+
+            try {
+                x = stod(tokens[6]);
+                y = stod(tokens[8]);
+                angle = stod(tokens[9]);
+                return true;
+            }
+            catch (const exception& e) {
+                cout << "提取坐标或角度时出错: " << e.what() << endl;
+                return false;
+            }
+        }
     }
 
     // 不是命令格式，尝试解析为两个数字
@@ -172,6 +232,71 @@ double distance(const Point& p1, const Point& p2) {
     return sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
 }
 
+// 计算圆心连线与第二个圆的交点
+vector<Point> findLineCircleIntersections(const Circle& c1, const Circle& c2) {
+    vector<Point> intersections;
+
+    // 计算两圆心之间的距离
+    double d = distance(c1.center, c2.center);
+
+    // 如果两圆同心，无法计算交点
+    if (d < 1e-10) {
+        return intersections;
+    }
+
+    // 计算单位向量从c1指向c2
+    double dx = (c2.center.x - c1.center.x) / d;
+    double dy = (c2.center.y - c1.center.y) / d;
+
+    // 计算圆心连线与第二个圆的交点
+    // 这两个点分别在c2圆心两侧，距离为r2
+    Point p1(
+        c2.center.x + dx * c2.radius,
+        c2.center.y + dy * c2.radius
+    );
+
+    Point p2(
+        c2.center.x - dx * c2.radius,
+        c2.center.y - dy * c2.radius
+    );
+
+    // 根据半径关系选择点
+    if (c2.radius < c1.radius) {
+        // 显示距离第一个圆的圆心更远的点
+        double dist1 = distance(c1.center, p1);
+        double dist2 = distance(c1.center, p2);
+
+        if (dist1 > dist2) {
+            intersections.push_back(p1);
+        }
+        else {
+            intersections.push_back(p2);
+        }
+    }
+    else if (c2.radius > c1.radius) {
+        // 显示距离第一个圆的圆心更近的点
+        double dist1 = distance(c1.center, p1);
+        double dist2 = distance(c1.center, p2);
+
+        if (dist1 < dist2) {
+            intersections.push_back(p1);
+        }
+        else {
+            intersections.push_back(p2);
+        }
+    }
+    else {
+        // 半径相等，显示中点
+        Point midpoint(
+            (c1.center.x + c2.center.x) / 2,
+            (c1.center.y + c2.center.y) / 2
+        );
+        intersections.push_back(midpoint);
+    }
+
+    return intersections;
+}
+
 // 计算两圆的交点
 vector<Point> findCircleIntersections(const Circle& c1, const Circle& c2) {
     vector<Point> intersections;
@@ -187,7 +312,10 @@ vector<Point> findCircleIntersections(const Circle& c1, const Circle& c2) {
 
     // 检查是否没有交点
     if (d > c1.radius + c2.radius || d < abs(c1.radius - c2.radius)) {
-        cout << "两圆没有交点" << endl;
+        intersections = findLineCircleIntersections(c1, c2);
+        if (!intersections.empty()) {
+            cout << "两圆没有交点，实际点为：" << endl;
+        }
         return intersections;
     }
 
@@ -275,50 +403,113 @@ void printIntersections(const vector<Point>& intersections, const Point& center,
     }
 }
 
-// 清空输入缓冲区
-void clearInputBuffer() {
-    cin.clear();
-    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+// 从options.txt文件中读取renderDistance的值（在整个文件中查找）
+bool readRenderDistanceFromOptions(double& renderDistance) {
+    ifstream file("options.txt");
+    if (!file.is_open()) {
+        // 静默失败，不输出错误信息
+        return false;
+    }
+
+    string line;
+    bool found = false;
+
+    // 在整个文件中查找renderDistance
+    while (getline(file, line)) {
+        // 查找"renderDistance:"的位置
+        size_t pos = line.find("renderDistance:");
+        if (pos != string::npos) {
+            // 提取renderDistance的值
+            string valueStr = line.substr(pos + 15); // "renderDistance:"的长度是15
+            try {
+                renderDistance = stod(valueStr);
+                cout << "从options.txt读取的renderDistance值: " << renderDistance << endl;
+                found = true;
+                break; // 找到第一个renderDistance就退出
+            }
+            catch (const exception& e) {
+                // 静默失败，不输出错误信息
+            }
+        }
+    }
+
+    file.close();
+    return found;
 }
 
 int main() {
     while (true) {
-        string input1, input2, r2_input_str;
-        double x1, y1, r1_input, x2, y2, r2_input;
+        string input1, input2;
+        double x1, y1, x2, y2;
         double angle1 = 0.0, angle2 = 0.0;
         bool isCommand1 = false, isCommand2 = false;
 
         cout << "请输入第一个圆的圆心坐标 (F3+C或x y坐标): ";
         getline(cin, input1);
 
-        if (!parseCoordinates(input1, x1, y1, angle1, isCommand1)) {
-            cout << "请重新输入" << endl;
+        // 如果输入为空，尝试从剪贴板获取内容
+        if (input1.empty()) {
+            input1 = getClipboardText();
+            if (!input1.empty()) {
+                cout << "已从剪贴板粘贴内容: " << input1 << endl;
+            }
+            else {
+                cout << "剪贴板为空或无法访问，请重新输入" << endl;
+                continue;
+            }
+        }
+
+        if (!parseCoordinates(input1, x1, y1, angle1, isCommand1, true)) {
             continue;
         }
 
-        cout << "提取的坐标: x = " << x1 << ", y = " << y1;
-        if (isCommand1) {
-            cout << ", 角度: " << angle1 << "° (已规范化: " << normalizeAngle(angle1) << "°)";
+        cout << "提取的坐标: x = " << x1 << ", y = " << y1 << endl;
+
+        // 从options.txt读取第一个圆的半径
+        double r1_input;
+        bool readSuccess1 = readRenderDistanceFromOptions(r1_input);
+        bool fileReadFailed = !readSuccess1; // 记录文件读取是否失败
+
+        if (!readSuccess1) {
+            // 循环直到输入有效的半径值
+            while (true) {
+                cout << "请手动输入第一个圆的半径 (r1): ";
+                string r1_input_str;
+                getline(cin, r1_input_str);
+
+                // 检查输入是否为空
+                if (r1_input_str.empty()) {
+                    cout << "输入不能为空，请重新输入。" << endl;
+                    continue;
+                }
+
+                // 尝试将输入转换为数字
+                try {
+                    r1_input = stod(r1_input_str);
+                    break; // 输入有效，退出循环
+                }
+                catch (const exception& e) {
+                    cout << "输入无效，请输入一个有效的数字。" << endl;
+                }
+            }
         }
-        cout << endl;
-
-        cout << "请输入第一个圆的半径 (r1): ";
-        cin >> r1_input;
-
-        // 检查输入是否有效
-        if (cin.fail()) {
-            cout << "输入无效，请重新输入数值。" << endl;
-            clearInputBuffer();
-            continue;
-        }
-
-        clearInputBuffer(); // 清除输入缓冲区
 
         cout << "请输入第二个圆的圆心坐标 (F3+C或x y坐标): ";
         getline(cin, input2);
 
-        if (!parseCoordinates(input2, x2, y2, angle2, isCommand2)) {
-            cout << "请重新输入" << endl;
+        // 如果输入为空，尝试从剪贴板获取内容
+        if (input2.empty()) {
+            input2 = getClipboardText();
+            if (!input2.empty()) {
+                cout << "已从剪贴板粘贴内容: " << input2 << endl;
+            }
+            else {
+                cout << "剪贴板为空或无法访问，请重新输入" << endl;
+                continue;
+            }
+        }
+
+        if (!parseCoordinates(input2, x2, y2, angle2, isCommand2, false)) {
             continue;
         }
 
@@ -329,31 +520,47 @@ int main() {
         }
         cout << endl;
 
-        cout << "请输入第二个圆的半径 (r2): ";
-        getline(cin, r2_input_str);
+        // 从options.txt读取第二个圆的半径
+        double r2_input;
+        bool readSuccess2 = false;
 
-        // 检查输入是否为空
-        if (r2_input_str.empty()) {
-            // 使用默认值：第一个圆的半径减1
-            r2_input = r1_input - 1.0;
-            cout << "使用默认半径值: r2 = r1 - 1 = " << r2_input << endl;
+        // 如果第一个圆已经无法读取options.txt，第二个圆直接手动输入
+        if (fileReadFailed) {
+            readSuccess2 = false;
         }
         else {
-            // 尝试将输入转换为数字
-            try {
-                r2_input = stod(r2_input_str);
-            }
-            catch (const exception& e) {
-                cout << "输入无效，请重新输入数值。" << endl;
-                continue;
+            readSuccess2 = readRenderDistanceFromOptions(r2_input);
+        }
+
+        if (!readSuccess2) {
+            // 循环直到输入有效的半径值
+            while (true) {
+                cout << "请手动输入第二个圆的半径 (r2): ";
+                string r2_input_str;
+                getline(cin, r2_input_str);
+
+                // 检查输入是否为空
+                if (r2_input_str.empty()) {
+                    // 使用默认值：第一个圆的半径
+                    r2_input = r1_input;
+                    cout << "使用默认半径值: r2 = r1 = " << r2_input << endl;
+                    break;
+                }
+
+                // 尝试将输入转换为数字
+                try {
+                    r2_input = stod(r2_input_str);
+                    break; // 输入有效，退出循环
+                }
+                catch (const exception& e) {
+                    cout << "输入无效，请输入一个有效的数字。" << endl;
+                }
             }
         }
 
         // 将输入的半径乘以16
         double r1 = r1_input * 16.0;
         double r2 = r2_input * 16.0;
-
-        cout << "使用的半径值: r1 = " << r1 << ", r2 = " << r2 << endl;
 
         Circle c1(x1, y1, r1);
         Circle c2(x2, y2, r2);
@@ -369,8 +576,11 @@ int main() {
         }
 
         cout << "----------------------------------------" << endl;
-        cout << "准备进行下一次计算...（Bilibili:InFect狄鹿）" << endl;
+        cout << "准备进行下一次计算...（Bilibili: InFect狄鹿）" << endl;
         cout << "----------------------------------------" << endl;
+
+        // 清空输入缓冲区，确保下一次循环正常
+        cin.clear();
     }
 
     return 0;
