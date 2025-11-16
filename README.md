@@ -22,7 +22,7 @@ $$ x=x_1+\frac{a\Delta x\pm h\Delta z}{d}\quad z=z_1+\frac{a\Delta z\mp h\Delta 
 
 ## 使用方法
 
-演示视频：https://www.bilibili.com/video/BV1Kyn3zyESQ
+[演示视频](https://www.bilibili.com/video/BV1Kyn3zyESQ)
 
 如果你将该.exe程序放在你的实例的.minecraft文件夹，那么该程序会自动帮你在options.txt中读取你的渲染距离（renderDistance）。
 
