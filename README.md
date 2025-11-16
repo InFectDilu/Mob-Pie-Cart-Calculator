@@ -8,15 +8,17 @@
 
 具体来说就是：
 
-d = √((x₂ - x₁)² + (y₂ - y₁)²)
+$$ r_1=16R_1 \quad r_2=16R_2 $$
 
-a = (R₁² - R₂² + d²) / (2d)
+$$ \Delta x=x_2-x_1 \quad \Delta z=z_2-z_1 $$
 
-P₀ = (x₁ + a(x₂ - x₁)/d, y₁ + a(y₂ - y₁)/d)
+$$ d=\sqrt{\Delta x^2+\Delta z^2} $$
 
-交点1 = (P₀ₓ + h(y₂ - y₁)/d, P₀ᵧ - h(x₂ - x₁)/d)
+$$ a=\frac{r_1^2-r_2^2+d^2}{2d} $$
 
-交点2 = (P₀ₓ - h(y₂ - y₁)/d, P₀ᵧ + h(x₂ - x₁)/d)
+$$ h=\sqrt{r_1^2-a^2} $$
+
+$$ x=x_1+\frac{a\Delta x\pm h\Delta z}{d}\quad z=z_1+\frac{a\Delta z\mp h\Delta x}{d} $$
 
 ## 使用方法
 
