@@ -22,6 +22,8 @@ $$ x=x_1+\frac{a\Delta x\pm h\Delta z}{d}\quad z=z_1+\frac{a\Delta z\mp h\Delta 
 
 ## 使用方法
 
+演示视频：https://www.bilibili.com/video/BV1Kyn3zyESQ
+
 如果你将该.exe程序放在你的实例的.minecraft文件夹，那么该程序会自动帮你在options.txt中读取你的渲染距离（renderDistance）。
 
 首先找到一个生物在饼图上刚出现的临界位置，按F3+C后在程序第一行按回车，也可以粘贴后再回车或手动输入当前x z坐标再按回车。
